@@ -69,8 +69,41 @@ def search_listings(
 
     Before writing code, fill in the Tool 1 section of planning.md.
     """
+
+    load_listings()
+    max_price = max_price if max_price is not None else float("inf")
+    size = size.lower() if size else None
+    description_keywords = set(description.lower().split())
+
+    scored_listings = []
+    for listing in load_listings():
+        if listing["price"] > max_price:
+            continue
+        if size and size not in listing["size"].lower():
+            continue
+
+        listing_keywords = set(listing["title"].lower().split()) | set(
+            listing["description"].lower().split()
+        )
+        score = len(description_keywords & listing_keywords)
+        if score > 0:
+            # Tuples signal "this pair belongs together and won't be modified" 
+            # — a score and its listing are a fixed pair. Lists signal 
+            # "this might grow or change." 
+            # Since you're never adding to the (score, listing) pair, 
+            # a tuple is the more accurate choice. But functionally, either works.
+            scored_listings.append((score, listing)) 
+
+    scored_listings.sort(key=lambda x: x[0], reverse=True)
+    return [listing for score, listing in scored_listings]
+
+"""for score, listing in scored_listings:
+    result.append(listing)   # ignore score, only keep listing
+return result
+"""
+
     # Replace this with your implementation
-    return []
+    #return []
 
 
 # ── Tool 2: suggest_outfit ────────────────────────────────────────────────────
@@ -100,9 +133,34 @@ def suggest_outfit(new_item: dict, wardrobe: dict) -> str:
 
     Before writing code, fill in the Tool 2 section of planning.md.
     """
-    # Replace this with your implementation
-    return ""
+    client = _get_groq_client()
 
+    if not wardrobe.get("items"):
+        # Path A: empty wardrobe — give general styling advice
+        prompt = (
+            f"Suggest styling advice for a new thrifted item: {new_item['title']}\n"
+            f"{new_item['description']}\n"
+            f"What kinds of items pair well with it, and what vibe does it suit?"
+        )
+    else:
+        # Path B: non-empty wardrobe — suggest specific outfits
+        wardrobe_items = "\n".join(
+            f"- {item['name']} ({item['category']})"
+            for item in wardrobe["items"]
+        )
+        prompt = (
+            f"I have a new thrifted item: {new_item['title']} - {new_item['description']}\n"
+            f"My current wardrobe includes:\n{wardrobe_items}\n"
+            "Suggest 1-2 complete outfit combinations using the new item and pieces from my wardrobe. "
+            "Be specific about which items to pair together and the overall vibe of each outfit."
+        )
+
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[{"role": "user", "content": prompt}]
+    )
+    return response.choices[0].message.content
+   
 
 # ── Tool 3: create_fit_card ───────────────────────────────────────────────────
 
@@ -133,5 +191,39 @@ def create_fit_card(outfit: str, new_item: dict) -> str:
 
     Before writing code, fill in the Tool 3 section of planning.md.
     """
+
+    client = _get_groq_client()
+    if not outfit.strip():
+        return "Error: No outfit suggestion provided. Cannot create fit card."
+    prompt = (
+        f"Create a short, casual, and authentic Instagram caption for an OOTD post featuring this thrifted item:\n"
+        f"Item: {new_item['title']}\n"
+        f"Price: ${new_item['price']} on {new_item['platform']}\n"
+        f"Outfit suggestion: {outfit}\n\n"
+        "The caption should mention the item name, price, and platform naturally, capture the outfit vibe in specific terms, and sound different each time for different inputs."
+    )
     # Replace this with your implementation
-    return ""
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[{"role": "user", "content": prompt}]
+    )
+    return response.choices[0].message.content
+
+if __name__ == "__main__":
+    # Example test for search_listings
+    results = search_listings("vintage graphic tee", size="M", max_price=30)
+    print(f"Found {len(results)} matching listings:")
+    for listing in results:
+        print(f"- {listing['title']} (${listing['price']})")
+
+    # Test suggest_outfit (once implemented)
+    if results:
+        suggestion = suggest_outfit(results[0], get_example_wardrobe())
+        print(f"\nOutfit: {suggestion}")
+
+    # Test create_fit_card (once implemented)
+        card = create_fit_card(suggestion, results[0])
+        print(f"\nFit card: {card}")
+
+
+                                            
